@@ -1,0 +1,88 @@
+#!/bin/bash
+
+IFS=$'\n'  # loop only on newlines
+INVALID_MLX=1
+INVALID_PDF=1
+
+PDF_FILES=$(find /autograder/submission -name "*.pdf")
+echo $PDF_FILES
+
+# check all PDF files
+for pdf in $PDF_FILES; do
+    echo "Checking $pdf"
+    # qpdf --check "$pdf" > /dev/null
+    gs -sDEVICE=png16m -r72x72 -dPDFSTOPONERROR -dNOPAUSE -dBATCH -sOutputFile=test.png "$pdf"
+    if [ $? -eq 0 ]
+    then
+        echo "PDF OK: $pdf"
+        INVALID_PDF=0
+    else
+        echo "Invalid PDF: $pdf"
+    fi
+done
+
+if [ -z "$PDF_FILES" ]; then
+    echo "No PDF files found in /autograder/submission"
+fi
+
+
+# check MLX files
+MLX_FILES=$(find /autograder/submission -name "*.mlx")
+
+# unzip each MLX file and run through xmllint
+for mlx in $MLX_FILES; do
+    echo "Checking $mlx"
+
+    unzipdir=$(basename "$mlx")
+    unzip -d "$unzipdir" -o -q "$mlx"
+    if ! xmllint --noout "$unzipdir/matlab/document.xml"; then
+        echo "Invalid MLX: $mlx"
+    else
+        echo "MLX OK: $mlx"
+        INVALID_MLX=0
+    fi
+done
+
+if [ -z "$MLX_FILES" ]; then
+    echo "No MLX files found in /autograder/submission"
+fi
+
+
+if [ $INVALID_MLX -eq 0 ] && [ $INVALID_PDF -eq 0 ]
+then
+    echo "All PDF and MLX files are valid"
+
+    cat << EOF1 > /autograder/results/results.json
+{
+    "visibility": "visible",
+    "stdout_visibility": "visible",
+    "tests": [
+        {
+            "name": "Both PDF and MLX files present?",
+            "output": "MLX and PDF files present and valid",
+            "score": 0,
+            "max_score": 0
+        }
+    ]
+}
+EOF1
+
+else
+    echo "Either PDF or MLX file missing"
+
+    cat << EOF2 > /autograder/results/results.json
+{
+    "visibility": "visible",
+    "stdout_visibility": "visible",
+    "tests": [
+        {
+            "name": "Both PDF and MLX files present?",
+            "output": "One or more of PDF or MLX files missing or invalid",
+            "score": -3,
+            "max_score": 0
+        }
+    ]
+}
+EOF2
+
+fi
